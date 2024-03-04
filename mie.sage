@@ -60,15 +60,53 @@ def square_root_inverse_degen(S, B=None, assume_full_rank=False):
   
     return L, L_inv
 
+def create_2d_plot(mie, direction, a, b):
+    from copy import deepcopy
+
+    old_mie = deepcopy(mie)
+    mie.integrate_parallel_cuts_hint(direction, a, b)
+
+    p = old_mie.plot2d() + mie.plot2d()
+
+    return p
+
+# input a coefficient matrix for an "intuitive" ellipsoid and get back the one
+# scaled for the paper
+def build_sigma_matrix(mat):
+    return mat.inverse() ^ 2
+
+# From the papers:
+# intuitive form of ellipse: E = {c + Au : u in S^2}
+# ellipoid norm form:        E = {x in R^n : <X(x-c), x-c> <= 1}
+# Here, Sigma = X, and since sqrt(X^-1) = A, it follows that
+# A = sqrt({Sigma}^-1)
+
 class MIE:
+    # right now only checking for positive definite matrix, but we
+    # technically should verify poitive semidefinite
     def __init__(self, S, mu):
+        if not S.is_positive_definite():
+            print("ERROR: must input a positive definite matrix")
+            return
         self.S = S
         self.mu = mu
-
+                
     def dim(self):
         return len(self.mu)
+
+    # WARNING: this is done assuming that self.S is in the intiuitve form
+    def plot2d(self):
+        ellipse_angle = atan2(self.S.column(1)[1], self.S.column(1)[0])
+        
+        return ellipse(list(self.mu), self.S.column(1).norm(), self.S.column(0).norm(),
+                       angle = ellipse_angle)
     
     # NOTE: in the toolkit everything is done with rows instead of columns
+    # go about this assuming direction is a unit vector from now on,
+    # this matches the definition of what one expects when working with a
+    # "direction" vector
+
+    # but the user need not worry about this, we'll normalize it
     def integrate_parallel_cuts_hint(self, direction, a, b):
         # the meaning of the signs here is kind of superfluous, this is just
         # to determine where everything is relative to the center of the
@@ -77,29 +115,54 @@ class MIE:
         # a and b are distances from the center of the ellipsoid to the
         # two hyperplanes in the hint, along the direction of direction
 
+        # now a and b are vectors representing the center of the ellipse
+        # to the hyperplanes
+        direction = direction / direction.norm()
+        a = a * direction
+        b = b * direction
+
         # there are problems if the direction is not in the column space
         # right now just error out
-        if not direction in self.S.column_space():
+        if not (a in self.S.column_space() and b in self.S.column_space()):
             #return InvalidHint("direction not in column space of Sigma")
-            print("ur dum lol")
+            print("a or b along direction not in column space of Sigma")
+            return
 
+        # A as above := sqrt_inv_mat
         (sqrt_mat, sqrt_inv_mat) = square_root_inverse_degen(self.S)
 
         # Step 1, subtract
-        direction -= self.mu
+        # before: E = mu + (sqrt_inv_mat)B_n
+        # after: E = (sqrt_inv_mat)B_n
+        # note that this applies to everyone inside the ball, and since
+        # we only care about a and b right now, only apply to a and b
+        # however this step shouldn't matter I think because a and b
+        # were defined with repect to the center
+        # a -= self.mu
+        # b -= self.mu
+
+        # make direction actual direction (scaled) and treat a and b as vectors from this
 
         # this is to accommodate for step 2 in our drawing
-        a_scaled = sqrt_mat * (direction / norm(direction)) * a
-        b_scaled = sqrt_mat * (direction / norm(direction)) * b
+        # Step 2: stretch the ellipsoid into ball
+        # before: E = (sqrt_inv_mat)B_n
+        # after: E = B_n
+        # to get back to a ball for easy rotations, we must "stretch"
+        # the ellipsoid back into a ball, which is done by
+        # multiplying by sqrt_mat
 
-        print("all scaled")
+        a_scaled = sqrt_mat * a
+        b_scaled = sqrt_mat * b
+
+        print(f"a_scaled: {a_scaled}, b_scaled: {b_scaled}")
         
         # this is to apply a Householder transformation
         e = zero_vector(self.dim())
         print("after zero")
         e[0] = 1
         print("make it e1")
-        refl = (e - direction) / 2
+
+        refl = (e - direction / norm(direction)) / 2
         
         # this step might cause issues, ellipsoids are over the reals,
         # but when we multiply it by the lattice, this thing has to be rational
@@ -111,10 +174,18 @@ class MIE:
         # intuitively, but we might have to figure this out later
         # if estimating, we need not worry about this
         G = AffineGroup(self.dim(), RR) # could be rationals, check back with this later
-        print("about to make relf_mat")
-        refl_mat = G.reflection(refl)
+        print("about to make refl_mat")
+
+        if refl == zero_vector(self.dim()):
+            refl_mat = G(identity_matrix(self.dim()), zero_vector(self.dim()))
+        else:
+            refl_mat = G.reflection(refl)
         print("got refl_mat")
 
+        # Step 3: rotate the ball such that a_scaled and b_scaled are aligned
+        # with the first coordinate
+        # before: E = B_n
+        # after: E = B_n (rotated in some way)
         a_scaled_rot = refl_mat.A() * a_scaled + refl_mat.b()
         b_scaled_rot = refl_mat.A() * b_scaled + refl_mat.b()
 
@@ -133,7 +204,7 @@ class MIE:
         # hyperplane is the tangent plane of the hypersphere
         if abs(alpha) > 1 or abs(beta) > 1:
             #raise InvalidHint("alpha or beta is too big to be useful")
-            print("super dum")
+            print("alpha or beta are too big to be useful")
 
         # this is a and b in the paper, changed names to avoid confusion
         matrix_first = 0
