@@ -156,13 +156,10 @@ class MIE:
         a_scaled = sqrt_mat * a
         b_scaled = sqrt_mat * b
 
-        print(f"a_scaled: {a_scaled}, b_scaled: {b_scaled}")
         
         # this is to apply a Householder transformation
         e = zero_vector(self.dim())
-        print("after zero")
         e[0] = 1
-        print("make it e1")
 
         refl = (e - direction / norm(direction)) / 2
         
@@ -176,13 +173,11 @@ class MIE:
         # intuitively, but we might have to figure this out later
         # if estimating, we need not worry about this
         G = AffineGroup(self.dim(), RR) # could be rationals, check back with this later
-        print("about to make refl_mat")
 
         if refl == zero_vector(self.dim()):
             refl_mat = G(identity_matrix(self.dim()), zero_vector(self.dim()))
         else:
             refl_mat = G.reflection(refl)
-        print("got refl_mat")
 
         # Step 3: rotate the ball such that a_scaled and b_scaled are aligned
         # with the first coordinate
@@ -200,7 +195,6 @@ class MIE:
 
         alpha, beta = min(alpha, beta), max(alpha, beta)
 
-        print(f"{alpha}, {beta}")
 
         # in the future we might want to make it so that we assume the extreme
         # hyperplane is the tangent plane of the hypersphere
@@ -216,34 +210,25 @@ class MIE:
         left_condition = 4 * n * (1 - alpha) * (1 + alpha)
         right_condition = (n + 1) * (n + 1) * (beta - alpha) * (beta + alpha)
 
-        print("before mess")
         if alpha == -beta:
-            print("cond 1")
             tau = 0
             matrix_first = beta
             matrix_rest = 1
         elif left_condition < right_condition:
-            print("cond 2")
             tau = 0.5 * (alpha + sqrt(alpha * alpha + left_condition / pow(n + 1, 2)))
             matrix_first = tau - alpha
             matrix_rest = sqrt(matrix_first * (matrix_first + n * tau))
         else: # (left_condition >= right_condition)
-            print("cond 3")
             denom = 2 * (sqrt((1 - alpha) * (1 + alpha)) - sqrt((1 - beta) * (1 + beta)))
             tau = 0.5 * (beta + alpha)
             matrix_first = 0.5 * (beta - alpha)
             matrix_rest = sqrt(matrix_first ** 2 + pow((beta ** 2 - alpha ** 2) / denom, 2))
 
-        print(f"{tau}, {matrix_first}, {matrix_rest}")
-        print("after mess")
-            
+
 
         # this is to build up the diagonal matrix as in the paper
-        print("zero_vector")
         z = zero_vector(RR, n)
-        print("matrix_first")
         z[0] = matrix_first
-        print("about to enter for loop")
         for ind in range(1, n):
             z[ind] = matrix_rest
         A = diagonal_matrix(z)
@@ -271,7 +256,6 @@ def prob_cuts(lbound, rbound, trials):
         elif ((point[0][0])^2 + (point[0][1])^2) <= 1 and point[0][0] <= rbound and point[0][0] >= lbound:
             list_points.append([point,0])
             inEllipse += 1
-    print(f'Prob = {N(inMIE/(inMIE+ inEllipse))}')
-    show(create_2d_plot(m, vector(RR, [1, 0]), lbound, rbound, list_points))
-
-prob_cuts(0.5,1,10000)
+    print(f'Vol Lost = {1-N(inMIE/(inMIE+ inEllipse))}')
+    show(create_2d_plot(m, vector(RR, [1, 0]), lbound, rbound, list_points)) 
+prob_cuts(0.7, 1,60000)
