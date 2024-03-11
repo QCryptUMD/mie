@@ -72,8 +72,18 @@ def create_2d_plot(mie, direction, a, b):
 
 # input a coefficient matrix for an "intuitive" ellipsoid and get back the one
 # scaled for the paper
-def build_sigma_matrix(mat):
-    return mat.inverse() ^ 2
+def build_sigma_matrix(A):
+    return A.inverse() ^ 2
+
+def build_a_matrix(mat):
+    return square_root_inverse_degen(mat)[1]
+
+# def plot_from_sigma(sigma, mu):
+#     S = square_root_inverse_degen(sigma)[0]
+#     ellipse_angle = atan2(S.column(1)[1], S.column(1)[0])
+    
+#     return ellipse(list(mu), S.column(1).norm(), S.column(0).norm(),
+#                    angle = ellipse_angle)
 
 # From the papers:
 # intuitive form of ellipse: E = {c + Au : u in S^2}
@@ -85,20 +95,23 @@ class MIE:
     # right now only checking for positive definite matrix, but we
     # technically should verify poitive semidefinite
     def __init__(self, S, mu):
+        # check out how Hunter did this check
         if not S.is_positive_definite():
             print("ERROR: must input a positive definite matrix")
             return
         self.S = S
         self.mu = mu
-                
+
     def dim(self):
         return len(self.mu)
 
     # WARNING: this is done assuming that self.S is in the intiuitve form
     def plot2d(self):
-        ellipse_angle = atan2(self.S.column(1)[1], self.S.column(1)[0])
+        (_, sqrt_inv_mat) = square_root_inverse_degen(self.S)
         
-        return ellipse(list(self.mu), self.S.column(1).norm(), self.S.column(0).norm(),
+        ellipse_angle = atan2(sqrt_inv_mat.column(1)[1], sqrt_inv_mat.column(1)[0])
+        
+        return ellipse(list(self.mu), sqrt_inv_mat.column(1).norm(), sqrt_inv_mat.column(0).norm(),
                        angle = ellipse_angle)
     
     # NOTE: in the toolkit everything is done with rows instead of columns
@@ -121,6 +134,8 @@ class MIE:
         a = a * direction
         b = b * direction
 
+        print(f"a: {a}, b: {b}")
+
         # there are problems if the direction is not in the column space
         # right now just error out
         if not (a in self.S.column_space() and b in self.S.column_space()):
@@ -130,6 +145,7 @@ class MIE:
 
         # A as above := sqrt_inv_mat
         (sqrt_mat, sqrt_inv_mat) = square_root_inverse_degen(self.S)
+        print(f"sqrt: {sqrt_mat}, sqrt_inv: {sqrt_inv_mat}")
 
         # Step 1, subtract
         # before: E = mu + (sqrt_inv_mat)B_n
