@@ -90,6 +90,15 @@ def build_a_matrix(mat):
 # ellipoid norm form:        E = {x in R^n : <X(x-c), x-c> <= 1}
 # Here, Sigma = X, and since sqrt(X^-1) = A, it follows that
 # A = sqrt({Sigma}^-1)
+def test_A(a):
+    p = circle([0,0],1)
+    # p += line([(-1+sqrt(2)/4,1+sqrt(2)/4), (1 + sqrt(2)/4,-1+sqrt(2)/4)])
+    for ind in range(0,360):
+        n_x = a[0][0]*cos(ind)+a[0][1]*sin(ind)
+        n_y = a[1][0]*cos(ind)+a[1][1]*sin(ind)
+        p2 = point((n_x,n_y),rgbcolor=hue(0))
+        p += p2
+    return p
 
 class MIE:
     # right now only checking for positive definite matrix, but we
