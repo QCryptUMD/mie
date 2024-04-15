@@ -193,10 +193,12 @@ class MIE:
         print("about to make refl_mat")
 
         if refl == zero_vector(self.dim()):
+            print("We have a zero vector, don't rotate")
             refl_mat = G(identity_matrix(self.dim()), zero_vector(self.dim()))
         else:
             refl_mat = G.reflection(refl)
-        print("got refl_mat")
+        print(f"got refl_mat\n\n\n: {refl_mat}\n\n\n")
+
 
         # Step 3: rotate the ball such that a_scaled and b_scaled are aligned
         # with the first coordinate
@@ -204,6 +206,7 @@ class MIE:
         # after: E = B_n (rotated in some way)
         a_scaled_rot = refl_mat.A() * a_scaled + refl_mat.b()
         b_scaled_rot = refl_mat.A() * b_scaled + refl_mat.b()
+        print(f"rotated guys: {a_scaled_rot}, {b_scaled_rot}")
 
         # now we have a unit ball with the first coordinate aligned, make sure
         # a and b are witihin this ball (since they are scalar multiples of
@@ -271,9 +274,10 @@ class MIE:
         # also rotate c here
         # might be able to apply either the matrix, or its transpose at the
         # worst because this is an orthonormal matrix
+        refl_mat_inverse = refl_mat.A().inverse()
         for ind in range(self.dim()):
             v = vector(A[:,ind])
-            reflected = refl_mat.A() * v + refl_mat.b()
+            reflected = refl_mat_inverse * (v - refl_mat.b())
             A[:,ind] = reflected
 
         print(f"after A: {A}, c: {c}")
@@ -285,7 +289,10 @@ class MIE:
         # xSx^T <= 1 (perhaps in order to mirror this property we would have
         #    (x * sqrt_inv_mat) * S * (x * sqrt_inv_mat)^T
         # <=> x * (sqrt_inv_mat * S * inv_mat) * x^T
-        self.S = sqrt_inv_mat * A
+        # self.S = sqrt_inv_mat * A
+        # self.S = (A.transpose() * self.S.inverse() * A).inverse()
+        self.S = ((sqrt_inv_mat * A) * (sqrt_inv_mat * A).transpose()).inverse()
+        print(f"new self.S: {self.S}")
         c = refl_mat.A() * c + refl_mat.b()
         c = sqrt_inv_mat * c
         self.mu += c
