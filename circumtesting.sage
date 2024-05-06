@@ -22,9 +22,13 @@ def projection_matrix(A):
     """
     S = A * A.T
     return A.T * S.inverse() * A
+
+# Convert a 1*1 matrix into a scalar
 def scal(M):
     assert M.nrows() == 1 and M.ncols() == 1, "This doesn't seem to be a scalar."
     return M[0, 0]
+
+# Finds the square root of a matrix and its inverse as well
 def square_root_inverse_degen(S, B=None, assume_full_rank=False):
     """ Compute the determinant of a symmetric matrix
     sigma (m x m) restricted to the span of the full-rank
@@ -59,49 +63,38 @@ def square_root_inverse_degen(S, B=None, assume_full_rank=False):
 
     # scipy outputs complex numbers, even for real valued matrices. Cast to real before rational.
     #L = round_matrix_to_rational(u @ np_sqrt(diag(s)) @ vh)
-  
+
     return L, L_inv
 
 def create_2d_plot(mie, direction, a, b):
     from copy import deepcopy
 
     old_mie = deepcopy(mie)
-    mie.integrate_ineq_hint(direction, a)
+    mie.integrate_parallel_cuts_hint(direction, a,b)
 
-    p = old_mie.plot2d() + mie.plot2d()
+    p = old_mie.plot2d(0) + mie.plot2d(0.75)
 
     return p
 
-# input a coefficient matrix for an "intuitive" ellipsoid and get back the one
-# scaled for the paper
-def build_sigma_matrix(A):
-    return A.inverse() ^ 2
-
-def build_a_matrix(mat):
-    return square_root_inverse_degen(mat)[1]
-
-# def plot_from_sigma(sigma, mu):
-#     S = square_root_inverse_degen(sigma)[0]
-#     ellipse_angle = atan2(S.column(1)[1], S.column(1)[0])
-    
-#     return ellipse(list(mu), S.column(1).norm(), S.column(0).norm(),
-#                    angle = ellipse_angle)
 
 # From the papers:
 # intuitive form of ellipse: E = {c + Au : u in S^2}
 # ellipoid norm form:        E = {x in R^n : <X(x-c), x-c> <= 1}
-# Here, Sigma = X, and since sqrt(X^-1) = A, it follows that
-# A = sqrt({Sigma}^-1)
-def test_A(a):
+# Here, Sigma = X, and since sqrt(X) = A, it follows that
+# A = sqrt({Sigma})
+
+def plot_2d(a, c):
     p = circle([0,0],1)
     # p += line([(-1+sqrt(2)/4,1+sqrt(2)/4), (1 + sqrt(2)/4,-1+sqrt(2)/4)])
     for ind in range(0,360):
-        n_x = a[0][0]*cos(ind)+a[0][1]*sin(ind)
-        n_y = a[1][0]*cos(ind)+a[1][1]*sin(ind)
+        n_x = a[0][0]*cos(ind)+a[0][1]*sin(ind)+ c[0]
+        n_y = a[1][0]*cos(ind)+a[1][1]*sin(ind)+ c[1]
         p2 = point((n_x,n_y),rgbcolor=hue(0))
         p += p2
+        p += line([[-1,0.6],[1, -1.4]])
     return p
-# change sqrt sigma to sqrt_inv sigma
+
+
 class MIE:
     # right now only checking for positive definite matrix, but we
     # technically should verify poitive semidefinite
@@ -114,44 +107,51 @@ class MIE:
         self.mu = mu
 
     def dim(self):
-        return 2
+        return len(list(self.mu.transpose()))
 
     # WARNING: this is done assuming that self.S is in the intiuitve form
-    def plot2d(self):
+    def plot2d(self, hueColor):
+        p = plot([], aspect_ratio = 1)
         (sqrt_mat, sqrt_inv_mat) = square_root_inverse_degen(self.S)
-        print(f"sqrt: \n{sqrt_mat.n()}\n, sqrt_inv: \n{sqrt_inv_mat.n()}\n, s: \n{self.S}\n")
-
-        ellipse_angle = atan2(sqrt_mat.column(1)[1], sqrt_mat.column(1)[0])
+        print(sqrt_mat.n())
+        for ind in range(0,360):
+            rotation_vec = vector(RR, [cos(ind), sin(ind)]).row()
+            new_point = rotation_vec * sqrt_mat
+            new_point += self.mu
+            p2 = point(new_point,rgbcolor=hue(hueColor))
+            p += p2
+            p += line([[-1,0.6],[1, -1.4]])
+        return p
         
-        return ellipse(list(self.mu), sqrt_mat.column(1).norm(), sqrt_mat.column(0).norm(),
-                       angle = ellipse_angle)
     def integrate_ineq_hint(self, v, bound):
         """
          <v, secret> <= bound
         See Eq (3.1.11), Eq. (3.1.12) in Lovasz's the Ellipsoid Method.
         """
         dim_ = self.dim()
-        s1 = self.S * v
-        s2 = v * s1
-        norm = sqrt(s2)
-        # print(f"num: {scal(v*self.mu.T) - bound}, denom: {norm}")
-        alpha = (self.mu*v - bound) / norm
-        #print(f"Alpha:{alpha}")
+  
+        ellipsoid_norm = sqrt((v * self.S * v.transpose())[0][0])
+        
+        # checks if inside ellipse
+        alpha = ((self.mu*v.transpose())[0][0] - bound) / ellipsoid_norm
+
         if alpha < -1 or alpha > 1:
             raise InvalidHint("Redundant hint! Cut outside ellipsoid!")
 
         if -1 <= alpha and alpha <= -1 /dim_:
             return
         
-        b = (1 / norm) * self.S*v
+        b = (1 / ellipsoid_norm) * v * self.S.transpose()
 
         coeff = (1 + dim_ * alpha) / (dim_ + 1)
+        print(dim_)
         coeff2 = (dim_ * dim_) / (dim_ * dim_ - 1) * (1 - alpha * alpha)
 
         self.mu -= coeff * b
-        self.S -= (2 * coeff) / (1 + alpha) * b * b
+        self.S -= (2 * coeff) / (1 + alpha) * b.transpose() * b
         self.S *= coeff2
-        print(f"ssss{self.S}")
+        print(f"sssss{self.S.n()}")
+        print(f"muuuu{self.mu.n()}")
     # NOTE: in the toolkit everything is done with rows instead of columns
     # go about this assuming direction is a unit vector from now on,
     # this matches the definition of what one expects when working with a
@@ -177,8 +177,10 @@ class MIE:
 
         # there are problems if the direction is not in the column space
         # right now just error out
-        if not (a in self.S.column_space() and b in self.S.column_space()):
-            #return InvalidHint("direction not in column space of Sigma")
+        try:
+            self.S.solve_left(a)
+            self.S.solve_left(b)
+        except:
             print("a or b along direction not in column space of Sigma")
             return
 
@@ -206,13 +208,13 @@ class MIE:
         # the ellipsoid back into a ball, which is done by
         # multiplying by sqrt_mat
 
-        a_scaled = sqrt_inv_mat * a
-        b_scaled = sqrt_inv_mat * b
+        a_scaled = a * sqrt_inv_mat.transpose()
+        b_scaled = b * sqrt_inv_mat.transpose()
 
         print(f"a_scaled: {a_scaled}, b_scaled: {b_scaled}")
         
         # this is to apply a Householder transformation
-        e = zero_vector(self.dim())
+        e = zero_vector(self.dim()).row()
         print("after zero")
         e[0] = 1
         print("make it e1")
@@ -231,11 +233,14 @@ class MIE:
         G = AffineGroup(self.dim(), RR) # could be rationals, check back with this later
         print("about to make refl_mat")
 
-        if refl == zero_vector(self.dim()):
+        if refl == zero_vector(self.dim()).row():
             print("We have a zero vector, don't rotate")
             refl_mat = G(identity_matrix(self.dim()), zero_vector(self.dim()))
         else:
-            refl_mat = G.reflection(refl)
+            copy_refl = []
+            for val in list(refl.transpose()):
+                copy_refl.append(val[0])
+            refl_mat = G.reflection(copy_refl)
         print(f"got refl_mat\n\n\n: {refl_mat}\n\n\n")
 
 
@@ -243,16 +248,15 @@ class MIE:
         # with the first coordinate
         # before: E = B_n
         # after: E = B_n (rotated in some way)
-        a_scaled_rot = refl_mat.A() * a_scaled + refl_mat.b()
-        b_scaled_rot = refl_mat.A() * b_scaled + refl_mat.b()
+        a_scaled_rot = a_scaled * matrix(RR, refl_mat.A().transpose())  + vector(RR,refl_mat.b()).row()
+        b_scaled_rot = b_scaled * matrix(RR, refl_mat.A().transpose()) + vector(RR,refl_mat.b()).row()
         print(f"rotated guys: {a_scaled_rot}, {b_scaled_rot}")
 
         # now we have a unit ball with the first coordinate aligned, make sure
         # a and b are witihin this ball (since they are scalar multiples of
         # e_1, we only have to check the first coordinate)
-
-        alpha = a_scaled_rot[0]
-        beta = b_scaled_rot[0]
+        alpha = a_scaled_rot[0][0]
+        beta = b_scaled_rot[0][0]
 
         alpha, beta = min(alpha, beta), max(alpha, beta)
 
@@ -305,6 +309,7 @@ class MIE:
         A = diagonal_matrix(z)
         c = zero_vector(RR, n)
         c[0] = tau
+        c = c.row()
 
         print(f"before A: {A}, c: {c}")
         
@@ -334,13 +339,13 @@ class MIE:
         # self.S = (A.transpose() * self.S.inverse() * A).inverse
         a_s = sqrt_mat*A
         
-        self.S = (a_s*a_s.transpose()).apply_map(lambda u:round(u,12))
-        print(f"new self.S: {self.S}")
+        self.S = (a_s*a_s.transpose())
+        print(f"new self.S: {self.S.n()}")
         #self.S = matrix(RR, [[cos(-pi/4), sin(-pi/4)],[-cos(-pi/4),sin(-pi/4)]]) * self.S
         print(f"new self.S: {self.S}")
 
-        c = refl_mat.A() * c + refl_mat.b()
-        c = sqrt_inv_mat * c
+        c = c * matrix(RR, refl_mat.A().transpose()) + vector(RR, refl_mat.b()).row()
+        c = c * sqrt_inv_mat.transpose()
         self.mu += c
-m = MIE(identity_matrix(RR, 2), vector(RR, [0,0]))
-create_2d_plot(m, vector(RR, [0, 1]), -0.4, 0.9)
+m = MIE(identity_matrix(RR, 2), vector(RR, [0,0]).row())
+create_2d_plot(m, vector(RR, [0, 1]).row(), -0.5, 0.5)
