@@ -221,7 +221,7 @@ class MIE:
         
         # this is to apply a Householder transformation to rotate a and b to be parallel to the y axis
         
-        e = zero_vector(self.dim())
+        e = zero_vector(RR, self.dim())
         e[0] = 1
         e = vector(RR, e).column()
         refl = (e - direction.transpose()) / 2
@@ -235,10 +235,10 @@ class MIE:
         # since we are rotating and rotating back, some things should cancel out
         # intuitively, but we might have to figure this out later
         # if estimating, we need not worry about this
-        G = AffineGroup(self.dim(), RR) # could be rationals, check back with this later
 
-        if refl == zero_vector(self.dim()):
-            refl_mat = G(identity_matrix(self.dim()), zero_vector(self.dim()))
+        G = AffineGroup(self.dim(), RR) # could be rationals, check back with this later
+        if vector(RR, [a[0] for a in refl]) == zero_vector(RR, self.dim()):
+            refl_mat = G(identity_matrix(self.dim()), zero_vector(RR, self.dim()))
         else:
             refl_mat = G.reflection([a[0] for a in refl])
 
