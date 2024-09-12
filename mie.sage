@@ -189,20 +189,19 @@ class MIE:
         # now a and b are vectors representing the center of the ellipse
         # to the hyperplanes
         direction = direction / direction.norm()
-        a = a * direction
-        b = b * direction
 
         # there are problems if the direction is not in the column space
         # right now just error out
         try:
-            self.S.solve_left(a)
-            self.S.solve_left(b)
+            self.S.solve_left(a * direction)
+            self.S.solve_left(b * direction)
         except:
             print("a or b along direction not in column space of Sigma")
             return
 
         # A as above := sqrt_mat
         (sqrt_mat, sqrt_inv_mat) = square_root_inverse_degen(self.S)
+
 
 
         # make direction actual direction (scaled) and treat a and b as vectors from this
@@ -215,10 +214,12 @@ class MIE:
         # the ellipsoid back into a ball, which is done by
         # multiplying by sqrt_mat
 
-        a_scaled = a * sqrt_inv_mat.transpose()
-        b_scaled = b * sqrt_inv_mat.transpose()
-
+        direction = direction * sqrt_inv_mat
+        a_scaled = a * direction
+        b_scaled = b * direction
         
+        direction = direction/direction.norm()
+
         # this is to apply a Householder transformation to rotate a and b to be parallel to the y axis
         
         e = zero_vector(RR, self.dim())
@@ -247,9 +248,11 @@ class MIE:
         # with the first coordinate
         # before: E = B_n
         # after: E = B_n (rotated in some way)
+
         a_scaled_rot = a_scaled * refl_mat.A().transpose()  + vector(RR,refl_mat.b()).row()
         b_scaled_rot = b_scaled * refl_mat.A().transpose() + vector(RR,refl_mat.b()).row()
 
+    
         # now we have a unit ball with the first coordinate aligned, make sure
         # a and b are witihin this ball (since they are scalar multiples of
         # e_1, we only have to check the first coordinate)
@@ -299,9 +302,11 @@ class MIE:
         c = c.row()
         
         # Rotating the matrix to the correct orientation
+        A_copy = identity_matrix(RR, len(A.column(0)))
+        for i in range(len(A.column(0))):
+            A_copy[:, i] = (A.column(i).row() * refl_mat.A().transpose()  + vector(RR,refl_mat.b()).row()).transpose()
 
-        A = refl_mat.A() * A
-
+        A = A_copy
         # transform it back and mutate the starting matrix
         # apply sqrt_inv to c
         # Dana mentioned that we might want self.S to be of the form
@@ -311,13 +316,13 @@ class MIE:
         #    (x * sqrt_inv_mat) * S * (x * sqrt_inv_mat)^T
         # <=> x * (sqrt_inv_mat * S * inv_mat) * x^T
         
-        a_s = sqrt_mat*A
+        a_s = A.transpose() *sqrt_mat
         
-        self.S = a_s*a_s.transpose()
+        self.S = a_s.transpose() * a_s 
 
         c = c * refl_mat.A().transpose() + vector(RR, refl_mat.b()).row()
-        c = c * sqrt_inv_mat.transpose()
+        c = c * sqrt_mat
         self.mu += c
         print(self.S)
-m = MIE(matrix(RR, [[3.00000000000000, 1.00000000000000], [1.00000000000000, 3.00000000000000]]), vector(RR, [0,0]).row())
-create_2d_plot(m, vector(RR, [-.3, .3]).row(), -sqrt(2), sqrt(2))
+m = MIE(matrix(RR, [[1, 0], [0, 1]]), vector(RR, [2,3]).row())
+create_2d_plot(m, vector(RR, [sqrt(2), sqrt(2)]).row(), -.5, .5)
