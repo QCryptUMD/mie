@@ -9,8 +9,6 @@ import numpy as np
 import sys
 from fpylll import *
 from fpylll.algorithms.bkz2 import BKZReduction
-import numpy as np
-from scipy.linalg import fractional_matrix_power
 from sage.matrix.constructor import vector_on_axis_rotation_matrix
 
 
@@ -163,19 +161,14 @@ class MIE:
     # WARNING: this is done assuming that self.S is in the intiuitve form
     def plot2d(self, colorValue):
         p = plot([], aspect_ratio = 1)
-        #(sqrt_mat, sqrt_inv_mat) = square_root_inverse_degen(self.S)
-        sqrt_mat_two = matrix(RR, fractional_matrix_power(np.array(self.S), -0.5))
-        print("Second")
-        print(sqrt_mat_two)
-        print("first")
-        #print(sqrt_mat.n(digits=4))
+        (sqrt_mat, sqrt_inv_mat) = square_root_inverse_degen(self.S)
         # Since the ellipse is of the form A*Ball + self.mu, we can plot the ellipse by 
         # plotting where the points of a circle map to.
         for ind in range(0,360):
             original_point = vector(RR, [cos(ind), sin(ind)]).row()
             
             # Why no transpose here??
-            new_point = original_point * sqrt_mat_two
+            new_point = original_point * sqrt_mat
             new_point += self.mu
             colorVal = "black" if colorValue == 1 else "magenta"
             p2 = point(new_point,color=colorVal)
@@ -214,8 +207,7 @@ class MIE:
             print("a or b along direction not in column space of Sigma")
             return
 
-        sqrt_mat = matrix(RR, fractional_matrix_power(np.array(self.S), -0.5)).transpose()
-        sqrt_inv_mat = matrix(RR, fractional_matrix_power(np.array(self.S), 0.5)).transpose()
+        (sqrt_mat, sqrt_inv_mat) = square_root_inverse_degen(self.S)
 
         # this is to accommodate for step 2 in our drawing
         # Step 2: stretch the ellipsoid into ball
@@ -261,12 +253,11 @@ class MIE:
         # <=> x * (sqrt_inv_mat * S * inv_mat) * x^T
         
         a_s = A.transpose() * sqrt_mat
-        self.S = matrix(RR, fractional_matrix_power(np.array(a_s.transpose()), -2)).transpose()
-        #self.S = a_s.transpose() * a_s 
+        self.S = a_s.transpose() * a_s 
         # apply sqrt_inv to c
         c = c * inv_rot_mat.transpose()
         c = c * sqrt_mat
         self.mu += c
         print(self.S)
-m = MIE(matrix(RR, [[1, 0], [0, 1]]), vector(RR, [0,0]).row())
+m = MIE(matrix(RR, [[4, 0], [0, 1]]), vector(RR, [0,0]).row())
 create_2d_plot(m, vector(RR, [sqrt(2), sqrt(2)]).row(), -.5, .5)
