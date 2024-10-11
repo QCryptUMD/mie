@@ -9,6 +9,11 @@ import numpy as np
 import sys
 from fpylll import *
 from fpylll.algorithms.bkz2 import BKZReduction
+import numpy as np
+from scipy.linalg import fractional_matrix_power
+from sage.matrix.constructor import vector_on_axis_rotation_matrix
+
+
 
 ROUNDING_FACTOR = 2**64
 
@@ -66,6 +71,43 @@ def square_root_inverse_degen(S, B=None, assume_full_rank=False):
 
     return L, L_inv
 
+def mie_unit_ball(alpha, beta, dim):
+    alpha, beta = min(alpha,beta), max(alpha,beta)
+    alpha, beta = max(alpha, -1), min(beta, 1)
+
+    # this is a and b in the paper, changed names to avoid confusion
+    matrix_first, matrix_rest, tau = 0, 0, 0
+    n = dim
+    left_condition = 4 * n * (1 - alpha) * (1 + alpha)
+    right_condition = (n + 1) * (n + 1) * (beta - alpha) * (beta + alpha)
+
+    if alpha == -beta:
+        tau = 0
+        matrix_first = beta
+        matrix_rest = 1
+    elif left_condition < right_condition:
+        intermediate = sqrt(alpha ** 2 + left_condition / ((n+1) ** 2))
+        tau = 0.5 * (alpha + intermediate)
+        matrix_first = tau - alpha
+        matrix_rest = sqrt(matrix_first * (matrix_first + n * tau))
+    else: # (left_condition >= right_condition)
+        denom = 2 * (sqrt((1 - alpha) * (1 + alpha)) - sqrt((1 - beta) * (1 + beta)))
+        tau = 0.5 * (beta + alpha)
+        matrix_first = 0.5 * (beta - alpha)
+        matrix_rest = sqrt(matrix_first ** 2 + ((beta ** 2 - alpha ** 2) / denom) ** 2)
+
+
+    # this is to build up the diagonal matrix as in the paper (LINK PAPER HERE)
+    z = zero_vector(RR, n)
+    z[0] = matrix_first
+    for ind in range(1, n):
+        z[ind] = matrix_rest
+    A = diagonal_matrix(z)
+    c = zero_vector(RR, n)
+    c[0] = tau
+    c = c.row()
+    return A, c
+
 def create_2d_plot(mie, direction, a, b):
     from copy import deepcopy
     
@@ -96,26 +138,54 @@ def create_2d_plot(mie, direction, a, b):
     
     p += line(first_line, color = "deepskyblue")
     p += line(second_line, color = "deepskyblue")
+    p += point((-4*sqrt(5)/5, sqrt(5)/5), color = "yellow")
+    p += line([[0,0], [.5/(2*sqrt(2)), .5/sqrt(2)]], color = "green")
+    p += line([[0,0], [-sqrt(2)/4 , sqrt(2)/2]])
 
 
     return p
 
+def plotEllipsoidRoot(matrix, center):
+    p = plot([], aspect_ratio = 1)
+    (sqrt_mat, sqrt_inv_mat) = square_root_inverse_degen(matrix)
+
+    # Since the ellipse is of the form A*Ball + self.mu, we can plot the ellipse by 
+    # plotting where the points of a circle map to.
+    for ind in range(0,360):
+        original_point = vector(RR, [cos(ind), sin(ind)]).row()
+
+        # Why no transpose here??
+        new_point = original_point * sqrt_mat
+        new_point += center
+        p2 = point(new_point,color="magenta")
+        p += p2
+    return p
+def plotEllipsoid(matrix, center):
+    p = plot([], aspect_ratio = 1)
+
+    # Since the ellipse is of the form A*Ball + self.mu, we can plot the ellipse by 
+    # plotting where the points of a circle map to.
+    for ind in range(0,360):
+        original_point = vector(RR, [cos(ind), sin(ind)]).row()
+
+        # Why no transpose here??
+        new_point = original_point * matrix
+        new_point += center
+        p2 = point(new_point,color="black")
+        p += p2
+    return p
 
 # From the papers:
-# intuitive form of ellipse: E = {c + Au : u in S^2}
+# intuitive form of ellipse: E = {c + Au : u in B_n}
 # ellipoid norm form:        E = {x in R^n : <X(x-c), x-c> <= 1}
-# Here, Sigma = X, and since sqrt(X) = A, it follows that
-# A = sqrt({Sigma})
+# Here, X = Sigma^(-1), and A = X^(-1/2) = Sigma^(1/2)
 
 
 class MIE:
-    # right now only checking for positive definite matrix, but we
-    # technically should verify poitive semidefinite
     def __init__(self, S, mu):
         # check out how Hunter did this check
-        if not S.is_positive_definite():
-            print("ERROR: must input a positive definite matrix")
-            return
+        if not np.all(np.linalg.eigvals(S) >= 0):
+            raise Exception("ERROR: must input a positive semidefinite matrix")
         self.S = S
         self.mu = mu
 
@@ -139,35 +209,6 @@ class MIE:
             p += p2
         return p
         
-    def integrate_ineq_hint(self, v, bound):
-        """
-         <v, secret> <= bound
-        See Eq (3.1.11), Eq. (3.1.12) in Lovasz's the Ellipsoid Method.
-        """
-        dim_ = self.dim()
-  
-        ellipsoid_norm = sqrt((v * self.S * v.transpose())[0][0])
-        
-        # checks if inside ellipse
-        alpha = ((self.mu*v.transpose())[0][0] - bound) / ellipsoid_norm
-
-        if alpha < -1 or alpha > 1:
-            raise InvalidHint("Redundant hint! Cut outside ellipsoid!")
-
-        if -1 <= alpha and alpha <= -1 /dim_:
-            return
-        
-        b = (1 / ellipsoid_norm) * v * self.S.transpose()
-
-        coeff = (1 + dim_ * alpha) / (dim_ + 1)
-        print(dim_)
-        coeff2 = (dim_ * dim_) / (dim_ * dim_ - 1) * (1 - alpha * alpha)
-
-        self.mu -= coeff * b
-        self.S -= (2 * coeff) / (1 + alpha) * b.transpose() * b
-        self.S *= coeff2
-        print(f"sssss{self.S.n()}")
-        print(f"muuuu{self.mu.n()}")
     # NOTE: in the toolkit everything is done with rows instead of columns
     # go about this assuming direction is a unit vector from now on,
     # this matches the definition of what one expects when working with a
@@ -182,12 +223,14 @@ class MIE:
         # the meaning of the signs here is kind of superfluous, this is just
         # to determine where everything is relative to the center of the
         # ellipsoid
-        # 
+        
         # a and b are distances from the center of the ellipsoid to the
         # two hyperplanes in the hint, along the direction of direction
 
         # now a and b are vectors representing the center of the ellipse
         # to the hyperplanes
+        
+        # Let's normalize direction
         direction = direction / direction.norm()
 
         # there are problems if the direction is not in the column space
@@ -199,12 +242,7 @@ class MIE:
             print("a or b along direction not in column space of Sigma")
             return
 
-        # A as above := sqrt_mat
         (sqrt_mat, sqrt_inv_mat) = square_root_inverse_degen(self.S)
-
-
-
-        # make direction actual direction (scaled) and treat a and b as vectors from this
 
         # this is to accommodate for step 2 in our drawing
         # Step 2: stretch the ellipsoid into ball
@@ -212,103 +250,30 @@ class MIE:
         # after: E = B_n
         # to get back to a ball for easy rotations, we must "stretch"
         # the ellipsoid back into a ball, which is done by
-        # multiplying by sqrt_mat
+        # multiplying by sqrt_inv_mat to undo sqrt_mat
 
-        direction = direction * sqrt_inv_mat
-        a_scaled = a * direction
-        b_scaled = b * direction
+        direction = direction * sqrt_mat
+        final_a = abs(a)/direction.norm()
+        final_b = abs(b)/direction.norm()
         
-        direction = direction/direction.norm()
-
-        # this is to apply a Householder transformation to rotate a and b to be parallel to the y axis
+        # Find how much we have to rotate direction to line up with the x axis
+        rot_mat = vector_on_axis_rotation_matrix(vector(RR, direction.list()), 0)
+        inv_rot_mat = matrix(RR, fractional_matrix_power(rot_mat, -1))
         
-        e = zero_vector(RR, self.dim())
-        e[0] = 1
-        e = vector(RR, e).column()
-        refl = (e - direction.transpose()) / 2
-        
-        # this step might cause issues, ellipsoids are over the reals,
-        # but when we multiply it by the lattice, this thing has to be rational
-        # a solution is to round to the nearest rational with some precision,
-        # but this can cause problems when done over and over again
-        # for a single hint, this _should_ be fine, still keep note of this
-        # though
-        # since we are rotating and rotating back, some things should cancel out
-        # intuitively, but we might have to figure this out later
-        # if estimating, we need not worry about this
-
-        G = AffineGroup(self.dim(), RR) # could be rationals, check back with this later
-        if vector(RR, [a[0] for a in refl]) == zero_vector(RR, self.dim()):
-            refl_mat = G(identity_matrix(self.dim()), zero_vector(RR, self.dim()))
-        else:
-            refl_mat = G.reflection([a[0] for a in refl])
-
-
-        # Step 3: rotate the ball such that a_scaled and b_scaled are aligned
-        # with the first coordinate
+        # Step 3: rotate the ball such that direction are in
+        # the direction of the x axis
         # before: E = B_n
         # after: E = B_n (rotated in some way)
+        rotated_direction = direction * rot_mat.transpose()
+        sign_direction = 1 if rotated_direction[0] > 0 else -1
+        sign_a = 1 if a > 0 else -1
+        sign_b = 1 if b > 0 else -1
+        alpha = sign_a * final_a
+        beta = sign_b * final_b
 
-        a_scaled_rot = a_scaled * refl_mat.A().transpose()  + vector(RR,refl_mat.b()).row()
-        b_scaled_rot = b_scaled * refl_mat.A().transpose() + vector(RR,refl_mat.b()).row()
-
-    
-        # now we have a unit ball with the first coordinate aligned, make sure
-        # a and b are witihin this ball (since they are scalar multiples of
-        # e_1, we only have to check the first coordinate)
-        alpha = a_scaled_rot[0][0]
-        beta = b_scaled_rot[0][0]
-
-        alpha, beta = min(alpha, beta), max(alpha, beta)
-
-
-        # in the future we might want to make it so that we assume the extreme
-        # hyperplane is the tangent plane of the hypersphere
-        if abs(alpha) > 1 or abs(beta) > 1:
-            #raise InvalidHint("alpha or beta is too big to be useful")
-            print("alpha or beta are too big to be useful")
-
-        # this is a and b in the paper, changed names to avoid confusion
-        matrix_first = 0
-        matrix_rest = 0
-        tau = 0
-        n = self.dim()
-        left_condition = 4 * n * (1 - alpha) * (1 + alpha)
-        right_condition = (n + 1) * (n + 1) * (beta - alpha) * (beta + alpha)
-
-        if alpha == -beta:
-            tau = 0
-            matrix_first = beta
-            matrix_rest = 1
-        elif left_condition < right_condition:
-            tau = 0.5 * (alpha + sqrt(alpha * alpha + left_condition / pow(n + 1, 2)))
-            matrix_first = tau - alpha
-            matrix_rest = sqrt(matrix_first * (matrix_first + n * tau))
-        else: # (left_condition >= right_condition)
-            denom = 2 * (sqrt((1 - alpha) * (1 + alpha)) - sqrt((1 - beta) * (1 + beta)))
-            tau = 0.5 * (beta + alpha)
-            matrix_first = 0.5 * (beta - alpha)
-            matrix_rest = sqrt(matrix_first ** 2 + pow((beta ** 2 - alpha ** 2) / denom, 2))
-            
-
-        # this is to build up the diagonal matrix as in the paper (LINK PAPER HERE)
-        z = zero_vector(RR, n)
-        z[0] = matrix_first
-        for ind in range(1, n):
-            z[ind] = matrix_rest
-        A = diagonal_matrix(z)
-        c = zero_vector(RR, n)
-        c[0] = tau
-        c = c.row()
-        
-        # Rotating the matrix to the correct orientation
-        A_copy = identity_matrix(RR, len(A.column(0)))
-        for i in range(len(A.column(0))):
-            A_copy[:, i] = (A.column(i).row() * refl_mat.A().transpose()  + vector(RR,refl_mat.b()).row()).transpose()
-
-        A = A_copy
+        A, c = mie_unit_ball(alpha, beta, self.dim())
         # transform it back and mutate the starting matrix
-        # apply sqrt_inv to c
+        A = inv_rot_mat * A   
         # Dana mentioned that we might want self.S to be of the form
         # inv_sqrt_mat * S * sqrt_mat
         # because of the properties that we have
@@ -316,13 +281,12 @@ class MIE:
         #    (x * sqrt_inv_mat) * S * (x * sqrt_inv_mat)^T
         # <=> x * (sqrt_inv_mat * S * inv_mat) * x^T
         
-        a_s = A.transpose() *sqrt_mat
-        
-        self.S = a_s.transpose() * a_s 
-
-        c = c * refl_mat.A().transpose() + vector(RR, refl_mat.b()).row()
+        a_s = A.transpose() * sqrt_mat 
+        self.S =  a_s.transpose() * a_s
+        # apply sqrt_inv to c
+        c = c * inv_rot_mat.transpose()
         c = c * sqrt_mat
         self.mu += c
         print(self.S)
-m = MIE(matrix(RR, [[1, 0], [0, 1]]), vector(RR, [2,3]).row())
-create_2d_plot(m, vector(RR, [sqrt(2), sqrt(2)]).row(), -.5, .5)
+m = MIE(matrix(RR, [[1, 0], [0, 1]]), vector(RR, [0,0]).row())
+create_2d_plot(m, vector(RR, [2*sqrt(2), sqrt(2)]).row(), -0.316227766016838, 0.316227766016838)
