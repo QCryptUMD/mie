@@ -111,17 +111,18 @@ def mie_unit_ball(alpha, beta, dim):
 def create_2d_plot(mie, direction, a, b):
     from copy import deepcopy
     
+    (sqrt_mat, sqrt_inv_mat) = square_root_inverse_degen(mie.S)
+    
     # Add the lines
-    major_axis_length = sqrt(mie.S.columns(0)[0][0]^2 + mie.S.columns(0)[0][1]^2)
-    norm = sqrt(direction[0][0]^2 + direction[0][1]^2)
-    unit_direction = direction/norm
+    major_axis_length = max(sqrt_mat.transpose().columns(0)[0].norm(), sqrt_mat.transpose().columns(1)[0].norm())
+    unit_direction = direction/direction.norm()
     
     # Find the 2 points that are a distance of 'a' and 'b' away from the center
     first_center = unit_direction * a + mie.mu
     second_center = unit_direction * b + mie.mu
 
     # Find the points that are far away from the first and second centers in the direction of the parallel cuts.
-    distance_from_center = vector(RR, [-direction[0][1], direction[0][0]]).row() * major_axis_length/norm
+    distance_from_center = vector(RR, [-direction[0][1], direction[0][0]]).row() * major_axis_length
     
     first_line = list(first_center + distance_from_center)
     first_line.append(list(first_center - distance_from_center)[0])
@@ -138,9 +139,6 @@ def create_2d_plot(mie, direction, a, b):
     
     p += line(first_line, color = "deepskyblue")
     p += line(second_line, color = "deepskyblue")
-    p += point((-4*sqrt(5)/5, sqrt(5)/5), color = "yellow")
-    p += line([[0,0], [.5/(2*sqrt(2)), .5/sqrt(2)]], color = "green")
-    p += line([[0,0], [-sqrt(2)/4 , sqrt(2)/2]])
 
 
     return p
@@ -243,6 +241,10 @@ class MIE:
             return
 
         (sqrt_mat, sqrt_inv_mat) = square_root_inverse_degen(self.S)
+        print("sqrt")
+        print(sqrt_mat.n(digits=8))
+        print("sqrtinv")
+        print(sqrt_inv_mat.n(digits=8))
 
         # this is to accommodate for step 2 in our drawing
         # Step 2: stretch the ellipsoid into ball
@@ -252,7 +254,7 @@ class MIE:
         # the ellipsoid back into a ball, which is done by
         # multiplying by sqrt_inv_mat to undo sqrt_mat
 
-        direction = direction * sqrt_mat
+        direction = direction * sqrt_mat.transpose()
         final_a = abs(a)/direction.norm()
         final_b = abs(b)/direction.norm()
         
@@ -288,5 +290,5 @@ class MIE:
         c = c * sqrt_mat
         self.mu += c
         print(self.S)
-m = MIE(matrix(RR, [[1, 0], [0, 1]]), vector(RR, [0,0]).row())
-create_2d_plot(m, vector(RR, [2*sqrt(2), sqrt(2)]).row(), -0.316227766016838, 0.316227766016838)
+m = MIE(matrix(RR, [[25, 4], [4, 9]]), vector(RR, [0,0]).row())
+create_2d_plot(m, vector(RR, [1,1]).row(), -0.5, 0.5)
