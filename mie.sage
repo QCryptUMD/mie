@@ -17,6 +17,19 @@ from sage.matrix.constructor import vector_on_axis_rotation_matrix
 
 ROUNDING_FACTOR = 2**64
 
+def sameMatrix(matrixOne, matrixTwo, dim):
+    matrixOne = matrixOne.apply_map(lambda u:round(u,5))
+    matrixTwo = matrixTwo.apply_map(lambda u:round(u,5))
+    diff = (matrixOne - matrixTwo).apply_map(lambda u:round(u,5))
+    entries = [x for row in diff for x in row]
+    return all([x == 0 for x in entries])
+
+def sameVector(vectorOne, vectorTwo):
+    vectorOne = vector(RR, [round(x, 5) for x in vectorOne[0]])
+    vectorTwo = vector(RR, [round(x, 5) for x in vectorTwo[0]])
+    diff = vector(RR, [round(x, 5) for x in (vectorOne - vectorTwo)])
+    return all([x == 0 for x in diff])
+
 def round_matrix_to_rational(M):
     A = matrix(ZZ, (ROUNDING_FACTOR * matrix(M)).apply_map(round))
     return matrix(QQ, A / ROUNDING_FACTOR)
@@ -122,7 +135,7 @@ def create_2d_plot(mie, direction, a, b):
     second_center = unit_direction * b + mie.mu
 
     # Find the points that are far away from the first and second centers in the direction of the parallel cuts.
-    distance_from_center = vector(RR, [-direction[0][1], direction[0][0]]).row() * major_axis_length
+    distance_from_center = vector(RR, [-unit_direction[0][1], unit_direction[0][0]]).row() * major_axis_length
     
     first_line = list(first_center + distance_from_center)
     first_line.append(list(first_center - distance_from_center)[0])
@@ -241,10 +254,6 @@ class MIE:
             return
 
         (sqrt_mat, sqrt_inv_mat) = square_root_inverse_degen(self.S)
-        print("sqrt")
-        print(sqrt_mat.n(digits=8))
-        print("sqrtinv")
-        print(sqrt_inv_mat.n(digits=8))
 
         # this is to accommodate for step 2 in our drawing
         # Step 2: stretch the ellipsoid into ball
@@ -289,6 +298,14 @@ class MIE:
         c = c * inv_rot_mat.transpose()
         c = c * sqrt_mat
         self.mu += c
+        print(self.mu)
         print(self.S)
-m = MIE(matrix(RR, [[25, 4], [4, 9]]), vector(RR, [0,0]).row())
-create_2d_plot(m, vector(RR, [1,1]).row(), -0.5, 0.5)
+        
+
+m = MIE(matrix(RR, [[25, 8], [8, 9]]), vector(RR, [5,3]).row())
+create_2d_plot(m, vector(RR, [1,0]).row(), 2, 8)
+m = MIE(matrix(RR, [[25, 8], [8, 9]]), vector(RR, [5,3]).row())
+m.integrate_parallel_cuts_hint(vector(RR, [1,0]).row(), 2,8)
+assert(sameVector(m.mu, vector(RR, [8.38047614284762, 4.08175236571124]).row()))
+assert(sameMatrix(m.S, matrix(RR, [[ 1.90571438097143,0.609828601910859],
+[0.609828601910859, 3.09032384381638]]), m.dim()))
