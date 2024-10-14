@@ -311,9 +311,8 @@ class MIE:
         # Step 3: rotate the ball such that direction are in
         # the direction of the first standard basis vector
         rotated_direction = direction * rot_mat.transpose()
-        sign_direction = 1 if rotated_direction[0] > 0 else -1
-        sign_a = 1 if a > 0 else -1
-        sign_b = 1 if b > 0 else -1
+        sign_a = 1 if rotated_direction[0] * a > 0 else -1
+        sign_b = 1 if rotated_direction[0] * b > 0 else -1
         alpha = sign_a * final_a
         beta = sign_b * final_b
 
