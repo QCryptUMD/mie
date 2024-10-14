@@ -200,38 +200,39 @@ class MIE:
     def dim(self):
         return len(list(self.mu.transpose()))
 
-    # WARNING: this is done assuming that self.S is in the intiuitve form
+    # Plots the two-dimensional ellipsoid given by E = {x in R^2 : <self.S(x-self.mu), x-self.mu> <= 1}
+    # Returns a plot object containing all the mapped points
+    # @colorValue: 0 or 1, denotes the color of the points
     def plot2d(self, colorValue):
         p = plot([], aspect_ratio = 1)
         (sqrt_mat, sqrt_inv_mat) = square_root_inverse_degen(self.S)
-        # Since the ellipse is of the form A*Ball + self.mu, we can plot the ellipse by 
-        # plotting where the points of a circle map to.
+        
+        # Since the ellipse is of the form (self.Sigma)^(1/2) * Ball + self.mu, we can plot the ellipse by 
+        # plotting where the points of the unit circle map to.
         for ind in range(0,360):
             original_point = vector(RR, [cos(ind), sin(ind)]).row()
+            new_point = original_point * sqrt_mat + self.mu
+            p += point(new_point,color="black" if colorValue == 1 else "magenta")
             
-            # Why no transpose here??
-            new_point = original_point * sqrt_mat
-            new_point += self.mu
-            colorVal = "black" if colorValue == 1 else "magenta"
-            p2 = point(new_point,color=colorVal)
-            p += p2
         return p
+    
+    # Plots the three-dimensional ellipsoid given by E = {x in R^3 : <self.S(x-self.mu), x-self.mu> <= 1}
+    # Returns a plot object containing all the mapped points
+    # @colorValue: 0 or 1, denotes the color of the points
     
     def plot3d(self, colorValue):
         p = plot([], aspect_ratio = 1)
         (sqrt_mat, sqrt_inv_mat) = square_root_inverse_degen(self.S)
-        # Since the ellipse is of the form A*Ball + self.mu, we can plot the ellipse by 
-        # plotting where the points of a unit sphere map to using the parametrization (sin(a)cos(b), sin(a)sin(b), cos(a))
-        for ind in range(0,180, 5):
-            for ind_two in range(0,360, 10):
-                original_point = vector(RR, [sin(ind)*cos(ind_two), sin(ind) * sin(ind_two), cos(ind)]).row()
-
-                # Why no transpose here??
-                new_point = original_point * sqrt_mat
-                new_point += self.mu
-                colorVal = "black" if colorValue == 1 else "magenta"
-                p2 = point(new_point,color=colorVal)
-                p += p2
+        # Since the ellipse is of the form (self.Sigma)^(1/2) * Ball + self.mu, we can plot the ellipse by 
+        # plotting where the points of a unit sphere map to
+        # We use spherical coordinates to parametrize the unit sphere
+        for polar_angle in range(0,180, 5):
+            for azimuthal_angle in range(0,360, 10):
+                original_point = vector(RR, [sin(polar_angle) * cos(azimuthal_angle), sin(polar_angle) * sin(azimuthal_angle), cos(polar_angle)]).row()
+                
+                new_point = original_point * sqrt_mat + self.mu
+                p += point(new_point, color="black" if colorValue == 1 else "magenta")
+                
         return p    
     
     # NOTE: in the toolkit everything is done with rows instead of columns
@@ -335,6 +336,3 @@ class MIE:
         c = c * inv_rot_mat.transpose()
         c = c * sqrt_mat
         self.mu += c
-
-m = MIE(matrix(RR, [[6,4,3], [2,8,6], [1,4,9]]), vector(RR, [3,4,5]).row())
-create_3d_plot(m, vector(RR, [sqrt(2)/2,sqrt(3)/2,sqrt(4)/2]).row(), -1,4)
