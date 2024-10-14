@@ -87,6 +87,8 @@ def square_root_inverse_degen(S, B=None, assume_full_rank=False):
 def mie_unit_ball(alpha, beta, dim):
     alpha, beta = min(alpha,beta), max(alpha,beta)
     alpha, beta = max(alpha, -1), min(beta, 1)
+    if alpha > 1 or beta < -1:
+        raise Exception("ERROR: hyperplanes fall outside the ellipsoid")
 
     # this is a and b in the paper, changed names to avoid confusion
     matrix_first, matrix_rest, tau = 0, 0, 0
@@ -156,6 +158,18 @@ def create_2d_plot(mie, direction, a, b):
 
     return p
 
+def create_3d_plot(mie, direction, a, b):
+    
+    # Integrate parallel cuts
+    old_mie = deepcopy(mie)
+    mie.integrate_parallel_cuts_hint(direction, a,b)
+
+    p = old_mie.plot3d(1) + mie.plot3d(0)
+
+
+
+    return p
+
 def plotEllipsoidRoot(matrix, center):
     p = plot([], aspect_ratio = 1)
     (sqrt_mat, sqrt_inv_mat) = square_root_inverse_degen(matrix)
@@ -171,6 +185,7 @@ def plotEllipsoidRoot(matrix, center):
         p2 = point(new_point,color="magenta")
         p += p2
     return p
+
 def plotEllipsoid(matrix, center):
     p = plot([], aspect_ratio = 1)
 
@@ -219,7 +234,23 @@ class MIE:
             p2 = point(new_point,color=colorVal)
             p += p2
         return p
-        
+    
+    def plot3d(self, colorValue):
+        p = plot([], aspect_ratio = 1)
+        (sqrt_mat, sqrt_inv_mat) = square_root_inverse_degen(self.S)
+        # Since the ellipse is of the form A*Ball + self.mu, we can plot the ellipse by 
+        # plotting where the points of a circle map to.
+        for ind in range(0,180, 5):
+            for ind_two in range(0,360, 10):
+                original_point = vector(RR, [sin(ind)*cos(ind_two), sin(ind) * sin(ind_two), cos(ind)]).row()
+
+                # Why no transpose here??
+                new_point = original_point * sqrt_mat
+                new_point += self.mu
+                colorVal = "black" if colorValue == 1 else "magenta"
+                p2 = point(new_point,color=colorVal)
+                p += p2
+        return p    
     # NOTE: in the toolkit everything is done with rows instead of columns
     # go about this assuming direction is a unit vector from now on,
     # this matches the definition of what one expects when working with a
@@ -281,7 +312,6 @@ class MIE:
         sign_b = 1 if b > 0 else -1
         alpha = sign_a * final_a
         beta = sign_b * final_b
-
         A, c = mie_unit_ball(alpha, beta, self.dim())
         # transform it back and mutate the starting matrix
         A = inv_rot_mat * A   
@@ -302,10 +332,5 @@ class MIE:
         print(self.S)
         
 
-m = MIE(matrix(RR, [[25, 8], [8, 9]]), vector(RR, [5,3]).row())
-create_2d_plot(m, vector(RR, [1,0]).row(), 2, 8)
-m = MIE(matrix(RR, [[25, 8], [8, 9]]), vector(RR, [5,3]).row())
-m.integrate_parallel_cuts_hint(vector(RR, [1,0]).row(), 2,8)
-assert(sameVector(m.mu, vector(RR, [8.38047614284762, 4.08175236571124]).row()))
-assert(sameMatrix(m.S, matrix(RR, [[ 1.90571438097143,0.609828601910859],
-[0.609828601910859, 3.09032384381638]]), m.dim()))
+m = MIE(matrix(RR, [[1,0,0], [0,1,0], [0,0,1]]), vector(RR, [0,0,0]).row())
+create_3d_plot(m, vector(RR, [1,0,0]).row(), -.5,.5)
