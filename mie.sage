@@ -1,14 +1,8 @@
 from numpy.linalg import inv as np_inv
 from numpy.linalg import svd, det, cholesky
-# from numpy.linalg import slogdet as np_slogdet
 from numpy import array, trace, log, diag
 from numpy import sqrt as np_sqrt
 from scipy.linalg import sqrtm
-from scipy.optimize import bisect, brenth, minimize_scalar, LinearConstraint, minimize
-import numpy as np
-import sys
-from fpylll import *
-from fpylll.algorithms.bkz2 import BKZReduction
 import numpy as np
 from scipy.linalg import fractional_matrix_power
 from sage.matrix.constructor import vector_on_axis_rotation_matrix
@@ -17,14 +11,14 @@ from sage.matrix.constructor import vector_on_axis_rotation_matrix
 
 ROUNDING_FACTOR = 2**64
 
-def sameMatrix(matrixOne, matrixTwo, dim):
+def approximateMatrixSimilarity(matrixOne, matrixTwo, dim):
     matrixOne = matrixOne.apply_map(lambda u:round(u,5))
     matrixTwo = matrixTwo.apply_map(lambda u:round(u,5))
     diff = (matrixOne - matrixTwo).apply_map(lambda u:round(u,5))
     entries = [x for row in diff for x in row]
     return all([x == 0 for x in entries])
 
-def sameVector(vectorOne, vectorTwo):
+def approximateVectorSimilarity(vectorOne, vectorTwo):
     vectorOne = vector(RR, [round(x, 5) for x in vectorOne[0]])
     vectorTwo = vector(RR, [round(x, 5) for x in vectorTwo[0]])
     diff = vector(RR, [round(x, 5) for x in (vectorOne - vectorTwo)])
@@ -124,12 +118,11 @@ def mie_unit_ball(alpha, beta, dim):
     return A, c
 
 def create_2d_plot(mie, direction, a, b):
-    from copy import deepcopy
     
     (sqrt_mat, sqrt_inv_mat) = square_root_inverse_degen(mie.S)
     
     # Add the lines
-    major_axis_length = max(sqrt_mat.transpose().columns(0)[0].norm(), sqrt_mat.transpose().columns(1)[0].norm())
+    major_axis_length = max(sqrt_mat.transpose().columns()[0].norm(), sqrt_mat.transpose().columns()[1].norm())
     unit_direction = direction/direction.norm()
     
     # Find the 2 points that are a distance of 'a' and 'b' away from the center
@@ -159,53 +152,36 @@ def create_2d_plot(mie, direction, a, b):
     return p
 
 def create_3d_plot(mie, direction, a, b):
+    var('x, y, z')
+    direction = direction/direction.norm()
+    
+    # Find the maximum distance we need to go in one direction
+    (sqrt_mat, sqrt_inv_mat) = square_root_inverse_degen(mie.S)
+    major_axis_length = max(sqrt_mat.transpose().columns()[0].norm(), sqrt_mat.transpose().columns()[1].norm(), sqrt_mat.transpose().columns()[2].norm())
+    
+    # Find the lower and upper ranges
+    lower_range = mie.mu - vector(RR, [major_axis_length,major_axis_length,major_axis_length ]).row()
+    upper_range = mie.mu + vector(RR, [major_axis_length,major_axis_length,major_axis_length ]).row()
+    
+    vars_translated = vector((vector((x,y,z)).row() - mie.mu).list())
+    plane_equation = vector(RR, direction.list()).dot_product(vars_translated)
     
     # Integrate parallel cuts
     old_mie = deepcopy(mie)
     mie.integrate_parallel_cuts_hint(direction, a,b)
 
     p = old_mie.plot3d(1) + mie.plot3d(0)
-
+    p += implicit_plot3d(plane_equation - a, (x, lower_range[0][0], upper_range[0][0]), (y, lower_range[0][1], upper_range[0][1]), (z, lower_range[0][2], upper_range[0][2]), opacity = .3)
+    p += implicit_plot3d(plane_equation - b, (x, lower_range[0][0], upper_range[0][0]), (y, lower_range[0][1], upper_range[0][1]), (z, lower_range[0][2], upper_range[0][2]), opacity = .3)
 
 
     return p
 
-def plotEllipsoidRoot(matrix, center):
-    p = plot([], aspect_ratio = 1)
-    (sqrt_mat, sqrt_inv_mat) = square_root_inverse_degen(matrix)
-
-    # Since the ellipse is of the form A*Ball + self.mu, we can plot the ellipse by 
-    # plotting where the points of a circle map to.
-    for ind in range(0,360):
-        original_point = vector(RR, [cos(ind), sin(ind)]).row()
-
-        # Why no transpose here??
-        new_point = original_point * sqrt_mat
-        new_point += center
-        p2 = point(new_point,color="magenta")
-        p += p2
-    return p
-
-def plotEllipsoid(matrix, center):
-    p = plot([], aspect_ratio = 1)
-
-    # Since the ellipse is of the form A*Ball + self.mu, we can plot the ellipse by 
-    # plotting where the points of a circle map to.
-    for ind in range(0,360):
-        original_point = vector(RR, [cos(ind), sin(ind)]).row()
-
-        # Why no transpose here??
-        new_point = original_point * matrix
-        new_point += center
-        p2 = point(new_point,color="black")
-        p += p2
-    return p
 
 # From the papers:
 # intuitive form of ellipse: E = {c + Au : u in B_n}
 # ellipoid norm form:        E = {x in R^n : <X(x-c), x-c> <= 1}
 # Here, X = Sigma^(-1), and A = X^(-1/2) = Sigma^(1/2)
-
 
 class MIE:
     def __init__(self, S, mu):
@@ -239,7 +215,7 @@ class MIE:
         p = plot([], aspect_ratio = 1)
         (sqrt_mat, sqrt_inv_mat) = square_root_inverse_degen(self.S)
         # Since the ellipse is of the form A*Ball + self.mu, we can plot the ellipse by 
-        # plotting where the points of a circle map to.
+        # plotting where the points of a unit sphere map to using the parametrization (sin(a)cos(b), sin(a)sin(b), cos(a))
         for ind in range(0,180, 5):
             for ind_two in range(0,360, 10):
                 original_point = vector(RR, [sin(ind)*cos(ind_two), sin(ind) * sin(ind_two), cos(ind)]).row()
@@ -251,6 +227,7 @@ class MIE:
                 p2 = point(new_point,color=colorVal)
                 p += p2
         return p    
+    
     # NOTE: in the toolkit everything is done with rows instead of columns
     # go about this assuming direction is a unit vector from now on,
     # this matches the definition of what one expects when working with a
@@ -328,9 +305,6 @@ class MIE:
         c = c * inv_rot_mat.transpose()
         c = c * sqrt_mat
         self.mu += c
-        print(self.mu)
-        print(self.S)
-        
 
-m = MIE(matrix(RR, [[1,0,0], [0,1,0], [0,0,1]]), vector(RR, [0,0,0]).row())
-create_3d_plot(m, vector(RR, [1,0,0]).row(), -.5,.5)
+m = MIE(matrix(RR, [[6,4,3], [2,8,6], [1,4,9]]), vector(RR, [3,4,5]).row())
+create_3d_plot(m, vector(RR, [sqrt(2)/2,sqrt(3)/2,sqrt(4)/2]).row(), -1,4)
