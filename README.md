@@ -9,7 +9,7 @@ m = MIE(matrix(RR, [[3,2], [2,9]]), vector(RR, [3,4]).row())
 ```
 
 
-To integrate a hint, you need a direction vector (in row form) as well as two scalars, a and b.
+To integrate a hint, you need a direction vector (in row form) as well as two scalars, a and b. This function modifies the class itself and updates both self.S and self.mu.
 ```
 m.integrate_parallel_cuts_hint(vector(RR, [sqrt(2)/2,sqrt(3)/2]).row(), -1,4)
 ```
