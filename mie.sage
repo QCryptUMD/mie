@@ -7,8 +7,6 @@ import numpy as np
 from scipy.linalg import fractional_matrix_power
 from sage.matrix.constructor import vector_on_axis_rotation_matrix
 
-
-
 ROUNDING_FACTOR = 2**64
 
 def approximateMatrixSimilarity(matrixOne, matrixTwo, dim):
@@ -78,10 +76,16 @@ def square_root_inverse_degen(S, B=None, assume_full_rank=False):
 
     return L, L_inv
 
+# Computes the MIE of a ball rotated so that the cutting hyperplanes are
+# orthogonal to the first standard basis vector. alpha and beta here are the
+# distances from the center of the ball to each of the hyperplanes.
+
+# https://www.researchgate.net/publication/233346563_Symmetry_of_convex_sets_and_its_applications_to_the_extremal_ellipsoids_of_convex_bodies
+# See theorem 6.1
 def mie_unit_ball(alpha, beta, dim):
     alpha, beta = min(alpha,beta), max(alpha,beta)
     alpha, beta = max(alpha, -1), min(beta, 1)
-    if alpha > 1 or beta < -1:
+    if alpha >= 1 or beta <= -1:
         raise Exception("ERROR: hyperplanes fall outside the ellipsoid")
 
     # this is a and b in the paper, changed names to avoid confusion
@@ -105,8 +109,6 @@ def mie_unit_ball(alpha, beta, dim):
         matrix_first = 0.5 * (beta - alpha)
         matrix_rest = sqrt(matrix_first ** 2 + ((beta ** 2 - alpha ** 2) / denom) ** 2)
 
-
-    # this is to build up the diagonal matrix as in the paper (LINK PAPER HERE)
     z = zero_vector(RR, n)
     z[0] = matrix_first
     for ind in range(1, n):
@@ -117,8 +119,12 @@ def mie_unit_ball(alpha, beta, dim):
     c = c.row()
     return A, c
 
+# Plots a two-dimensional ellipsoid, the cutting hyperplanes (lines), and the MIE
+#
+# @mie: the mie instance
+# @direction, a, b: defines two hyperplanes by the normal of the hyperplane
+#                   and their distances relative to the center of the ellipsoid
 def create_2d_plot(mie, direction, a, b):
-    
     (sqrt_mat, sqrt_inv_mat) = square_root_inverse_degen(mie.S)
     
     # Add the lines
@@ -143,14 +149,17 @@ def create_2d_plot(mie, direction, a, b):
     mie.integrate_parallel_cuts_hint(direction, a,b)
 
     p = old_mie.plot2d(1) + mie.plot2d(0)
-    
-    
+        
     p += line(first_line, color = "deepskyblue")
     p += line(second_line, color = "deepskyblue")
 
-
     return p
 
+# Plots a three-dimensional ellipsoid, the cutting hyperplanes (planes), and the MIE
+#
+# @mie: the mie instance
+# @direction, a, b: defines two hyperplanes (planes) by the normal of the hyperplane
+#                   and their distances relative to the center of the ellipsoid
 def create_3d_plot(mie, direction, a, b):
     var('x, y, z')
     direction = direction/direction.norm()
@@ -174,15 +183,12 @@ def create_3d_plot(mie, direction, a, b):
     p += implicit_plot3d(plane_equation - a, (x, lower_range[0][0], upper_range[0][0]), (y, lower_range[0][1], upper_range[0][1]), (z, lower_range[0][2], upper_range[0][2]), opacity = .3)
     p += implicit_plot3d(plane_equation - b, (x, lower_range[0][0], upper_range[0][0]), (y, lower_range[0][1], upper_range[0][1]), (z, lower_range[0][2], upper_range[0][2]), opacity = .3)
 
-
     return p
-
 
 # From the papers:
 # intuitive form of ellipse: E = {c + Au : u in B_n}
 # ellipoid norm form:        E = {x in R^n : <X(x-c), x-c> <= 1}
 # Here, X = Sigma^(-1), and A = X^(-1/2) = Sigma^(1/2)
-
 class MIE:
     def __init__(self, S, mu):
         # check out how Hunter did this check
@@ -233,23 +239,24 @@ class MIE:
     # this matches the definition of what one expects when working with a
     # "direction" vector
 
-    # but the user need not worry about this, we'll normalize it
-    
+    # @self: an MIE instance, which is made up of a covariance matrix and
+    #        the center mu of an ellipsoid
+    # @direction: the direction of the parallel hyperplanes, does not have
+    #             to be normalized
+    # @a, b: the distance from the center of the ellipsoid to each hyperplane,
+    #        in the direction indicated by direction
+    #
+    # The hyperplanes are given by the following formulas:
+    # direction * (x - mu) = a
+    # direction * (x - mu) = b
     def integrate_parallel_cuts_hint(self, direction, a, b):
+        # if a == b then there is no space between the generated hyperplanes
+        # for an MIE to fit, so this is an error
         if (a == b):
             print("Invalid Hint")
             return
-        # the meaning of the signs here is kind of superfluous, this is just
-        # to determine where everything is relative to the center of the
-        # ellipsoid
         
-        # a and b are distances from the center of the ellipsoid to the
-        # two hyperplanes in the hint, along the direction of direction
-
-        # now a and b are vectors representing the center of the ellipse
-        # to the hyperplanes
-        
-        # Let's normalize direction
+        # Normalize the direction
         direction = direction / direction.norm()
 
         # there are problems if the direction is not in the column space
@@ -261,16 +268,37 @@ class MIE:
             print("a or b along direction not in column space of Sigma")
             return
 
+        # The high-level idea of our procedure follows (see the
+        # accompanying paper for pictures at each step:
+        #
+        # To start we have the covariance matrix of the ellipsoid E as follows:
+        # E = {x : (x - mu) * (Sigma^{-1}) * (x - mu)^T <= 1}
+        #   (We call this the "ellipsoid norm form" of the ellipsoid)
+        #
+        # We want to turn our ellipsoid into a ball rotated some way so that
+        # the conditions in the ellipsoid paper are satisfied, and this is made
+        # easier by equivalently defining our ellipsoid by
+        # E = {x * sqrt(Sigma) + mu : ||x|| <= 1}
+        #   = B_n * sqrt(Sigma) + mu (informally speaking)
+        #   (We call this the "stretched ball form" of the ellipsoid)
+        #
+        # Step 1: Translate the space so that the center of the ellipsoid is at
+        #         the origin
+        # Step 2: Multiply the space by sqrt(Sigma)^{-1} to undo the scaling on
+        #         the ball in the above definition so that we have a ball
+        #         centered at the origin (note that the original hyperplanes
+        #         may have been scaled and rotated in this process)
+        # Step 3: Rotate the space so that normals to the hyperplanes are
+        #         aligned with the first standard basis vector
+        # Step 4: Perform the MIE algorithm from the paper
+        # Step 5: Undo all the previous steps with the new ellipsoid so that by
+        #         the end we have an MIE with respect to the ellipsoid we
+        #         started with
+
+        # obtain sqrt(Sigma) and sqrt(Sigma)^{-1} respectively
         (sqrt_mat, sqrt_inv_mat) = square_root_inverse_degen(self.S)
 
-        # this is to accommodate for step 2 in our drawing
-        # Step 2: stretch the ellipsoid into ball
-        # before: E = (sqrt_mat)B_n
-        # after: E = B_n
-        # to get back to a ball for easy rotations, we must "stretch"
-        # the ellipsoid back into a ball, which is done by
-        # multiplying by sqrt_inv_mat to undo sqrt_mat
-
+        # get the new hyperplanes and direction resulting from Step 2
         direction = direction * sqrt_mat.transpose()
         final_a = abs(a)/direction.norm()
         final_b = abs(b)/direction.norm()
@@ -280,16 +308,18 @@ class MIE:
         inv_rot_mat = matrix(RR, fractional_matrix_power(rot_mat, -1))
         
         # Step 3: rotate the ball such that direction are in
-        # the direction of the x axis
-        # before: E = B_n
-        # after: E = B_n (rotated in some way)
+        # the direction of the first standard basis vector
         rotated_direction = direction * rot_mat.transpose()
         sign_direction = 1 if rotated_direction[0] > 0 else -1
         sign_a = 1 if a > 0 else -1
         sign_b = 1 if b > 0 else -1
         alpha = sign_a * final_a
         beta = sign_b * final_b
+
+        # Step 4: Apply the MIE algorithm
         A, c = mie_unit_ball(alpha, beta, self.dim())
+
+        # Step 5:
         # transform it back and mutate the starting matrix
         A = inv_rot_mat * A   
         # Dana mentioned that we might want self.S to be of the form
